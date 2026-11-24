@@ -52,12 +52,8 @@ class MenuBarController: NSObject, ObservableObject {
         popover.performClose(nil)
     }
 
-    func place(_ placement: DisplayPlacement) {
-        displayManager.place(placement)
-    }
-
-    func currentPlacement() -> DisplayPlacement {
-        displayManager.currentPlacement() ?? .below
+    func apply(_ displays: [DisplayInfo]) {
+        displayManager.apply(displays)
     }
 
     func currentLayout() -> DisplayLayoutSnapshot? {

@@ -5,140 +5,96 @@
 //  Created by Ole Christian Sollid on 04/12/2025.
 //
 
-import Foundation
+import AppKit
 import CoreGraphics
 
+/// One display as it appears in the arrangement, in global display coordinates
+/// (points, primary display at origin, y grows downward).
+struct DisplayInfo: Identifiable, Equatable {
+    let id: CGDirectDisplayID
+    let name: String
+    let isPrimary: Bool
+    var frame: CGRect
+}
+
 struct DisplayLayoutSnapshot {
-    let primarySize: CGSize
-    let externalSize: CGSize
-    let placement: DisplayPlacement
+    let displays: [DisplayInfo]
 }
 
 class DisplayManager {
-    /**
-     * Attempts to place the second active display relative to the primary display
-     * using public Core Graphics configuration functions.
-     * @param placement The desired relative position (.left, .right, .above, or .below).
-     */
-    func place(_ placement: DisplayPlacement) {
-        guard let (primary, external) = primaryAndExternalDisplay() else {
-            print("Only one display found. Cant arrange")
-            return
-        }
+    /// Number of displays (besides the primary) the app will arrange.
+    static let maxExternalDisplays = 3
 
-        let primaryBounds = CGDisplayBounds(primary)
-        let externalBounds = CGDisplayBounds(external)
-        
-        var newX: CGFloat = 0
-        var newY: CGFloat = 0
-        
-        // Calculate the new origin (top-left corner) for extra display
-        switch placement {
-        case .left:
-            // x = -(width of external display)
-            newX = -externalBounds.width
-            // Center vertically relative to primary
-            newY = (primaryBounds.height - externalBounds.height) / 2
-            
-        case .right:
-            // x = (width of primary display)
-            newX = primaryBounds.width
-            newY = (primaryBounds.height - externalBounds.height) / 2
-            
-        case .above:
-            newY = -externalBounds.height
-            newX = (primaryBounds.width - externalBounds.width) / 2
-            
-        case .below:
-            newY = primaryBounds.height
-            newX = (primaryBounds.width - externalBounds.width) / 2
+    /// Reads the current arrangement: the primary display plus up to
+    /// `maxExternalDisplays` additional displays. Returns nil with only one display.
+    func currentLayout() -> DisplayLayoutSnapshot? {
+        let primary = CGMainDisplayID()
+        let externals = activeDisplays()
+            .filter { $0 != primary && CGDisplayMirrorsDisplay($0) == kCGNullDirectDisplay }
+            .prefix(Self.maxExternalDisplays)
+        guard !externals.isEmpty else { return nil }
+
+        let names = screenNames()
+        let ids = [primary] + externals
+        let displays = ids.map { id in
+            DisplayInfo(
+                id: id,
+                name: names[id] ?? (id == primary ? "Main Display" : "Display"),
+                isPrimary: id == primary,
+                frame: CGDisplayBounds(id)
+            )
         }
-        
+        return DisplayLayoutSnapshot(displays: displays)
+    }
+
+    /// Moves every non-primary display to the origin given by its frame,
+    /// in a single configuration transaction.
+    func apply(_ displays: [DisplayInfo]) {
         var configRef: CGDisplayConfigRef?
-        
-        // Start the config transaction
         let beginResult = CGBeginDisplayConfiguration(&configRef)
         guard beginResult == .success, let config = configRef else {
-            print("CGBeginDisplayConfiguration failed: \(beginResult.rawValue)")
+            log("CGBeginDisplayConfiguration failed: \(beginResult.rawValue)")
             return
         }
-        
-        // Set the new origin for the extra display
-        let setResult = CGConfigureDisplayOrigin(config, external, Int32(newX), Int32(newY))
-        
-        if setResult == .success {
-            // Commit change permanently and save to usrprefs
-            let completeResult = CGCompleteDisplayConfiguration(config, .permanently)
-            if completeResult == .success {
-                print("Reposition complete: External display moved \(placement)")
-            } else {
-                print("CGCompleteDisplayConfiguration failed: \(completeResult.rawValue)")
+
+        for display in displays where !display.isPrimary {
+            let result = CGConfigureDisplayOrigin(
+                config,
+                display.id,
+                Int32(display.frame.origin.x.rounded()),
+                Int32(display.frame.origin.y.rounded())
+            )
+            if result != .success {
+                log("CGConfigureDisplayOrigin failed for \(display.id): \(result.rawValue)")
+                CGCancelDisplayConfiguration(config)
+                return
             }
+        }
+
+        let completeResult = CGCompleteDisplayConfiguration(config, .permanently)
+        if completeResult == .success {
+            log("Arrangement applied for \(displays.count) displays")
         } else {
-            print("CGConfigureDisplayOrigin failed: \(setResult.rawValue)")
-            // If setting the origin fails, cancel transaction
-            CGCompleteDisplayConfiguration(config, .forAppOnly)
+            log("CGCompleteDisplayConfiguration failed: \(completeResult.rawValue)")
         }
     }
 
-    func currentPlacement() -> DisplayPlacement? {
-        currentLayout()?.placement
-    }
-
-    func currentLayout() -> DisplayLayoutSnapshot? {
-        guard let (primary, external) = primaryAndExternalDisplay() else {
-            return nil
-        }
-
-        let primaryBounds = CGDisplayBounds(primary)
-        let externalBounds = CGDisplayBounds(external)
-
-        return DisplayLayoutSnapshot(
-            primarySize: primaryBounds.size,
-            externalSize: externalBounds.size,
-            placement: placement(for: primaryBounds, externalBounds: externalBounds)
-        )
-    }
-    
-    /**
-     * Gets a list of all currently active (on and connected) displays.
-     * @return An array of CGDirectDisplayID for active displays.
-     */
+    /// Gets a list of all currently active (on and connected) displays.
     private func activeDisplays() -> [CGDirectDisplayID] {
         var count: UInt32 = 0
-        
-        // Get the count of active displays
         CGGetActiveDisplayList(0, nil, &count)
-        
-        // Allocate space for the list
         var list = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        
-        // Get the list of IDs
         CGGetActiveDisplayList(count, &list, &count)
-        
-        return list
+        return Array(list.prefix(Int(count)))
     }
 
-    private func primaryAndExternalDisplay() -> (CGDirectDisplayID, CGDirectDisplayID)? {
-        let displays = activeDisplays()
-        guard displays.count >= 2 else { return nil }
-
-        let primary = CGMainDisplayID()
-        if let external = displays.first(where: { $0 != primary }) {
-            return (primary, external)
+    private func screenNames() -> [CGDirectDisplayID: String] {
+        var names: [CGDirectDisplayID: String] = [:]
+        for screen in NSScreen.screens {
+            if let id = screen.displayID {
+                names[id] = screen.localizedName
+            }
         }
-
-        return nil
-    }
-
-    private func placement(for primaryBounds: CGRect, externalBounds: CGRect) -> DisplayPlacement {
-        let dx = externalBounds.midX - primaryBounds.midX
-        let dy = externalBounds.midY - primaryBounds.midY
-
-        if abs(dx) >= abs(dy) {
-            return dx >= 0 ? .right : .left
-        }
-
-        return dy >= 0 ? .below : .above
+        return names
     }
 }
