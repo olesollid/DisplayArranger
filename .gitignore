@@ -33,3 +33,6 @@ build/
 *~
 *.dat
 *.dep
+
+# Local-use script for icon generator
+scripts/

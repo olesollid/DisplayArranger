@@ -1,5 +1,7 @@
 # DisplayArranger
 
+![DisplayArranger icon](DisplayArranger/Assets.xcassets/AppIcon.appiconset/icon_512.png)
+
 DisplayArranger is a minimal macOS menu bar app that lets you quickly change your screen arrangement with a single click.
 
 It’s designed to make switching display layouts fast and effortless, without opening System Settings.
