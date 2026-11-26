@@ -1,0 +1,116 @@
+name: Build
+
+# Builds an ad-hoc signed DisplayArranger.app and packages it in a DMG with an
+# /Applications shortcut to drag it onto.
+#  - Every push to main and every pull request: the DMG is uploaded as a workflow artifact.
+#  - Called by release-please.yml when a release is created: the DMG is also
+#    attached to that GitHub Release.
+#  - Can also be started by hand from the Actions tab.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Tag of the GitHub Release to attach the DMG to (e.g. v1.2.0)
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: write # needed to upload the DMG to a release
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      APP_NAME: DisplayArranger
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Work out version
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            VERSION="${RELEASE_TAG#v}"
+          else
+            # Last released version, as recorded by release-please.
+            VERSION="$(jq -r '."."' .release-please-manifest.json)"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Building version $VERSION (build $GITHUB_RUN_NUMBER)"
+
+      - name: Build (ad-hoc signed, universal)
+        run: |
+          xcodebuild \
+            -project "$APP_NAME.xcodeproj" \
+            -scheme "$APP_NAME" \
+            -configuration Release \
+            -derivedDataPath build \
+            -destination "generic/platform=macOS" \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM= \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            build
+
+      - name: Verify signature
+        run: |
+          APP="build/Build/Products/Release/$APP_NAME.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | grep -E "Signature|Identifier="
+          lipo -archs "$APP/Contents/MacOS/$APP_NAME"
+
+      - name: Create DMG
+        run: |
+          STAGING="$RUNNER_TEMP/dmg"
+          mkdir -p "$STAGING"
+          ditto "build/Build/Products/Release/$APP_NAME.app" "$STAGING/$APP_NAME.app"
+          ln -s /Applications "$STAGING/Applications"
+          DMG="$APP_NAME-$VERSION.dmg"
+          hdiutil create \
+            -volname "$APP_NAME" \
+            -srcfolder "$STAGING" \
+            -fs HFS+ \
+            -format UDZO \
+            -ov \
+            "$DMG"
+          hdiutil verify "$DMG"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ env.VERSION }}
+          path: ${{ env.DMG }}
+          if-no-files-found: error
+
+      - name: Attach DMG to release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release upload "$RELEASE_TAG" "$DMG" --clobber
+
+          # Add install instructions under release-please's changelog notes.
+          NOTES="$(gh release view "$RELEASE_TAG" --json body --jq .body)"
+          if [[ "$NOTES" != *"Open Anyway"* ]]; then
+            printf '%s\n\n---\n\n%s\n\n%s\n' "$NOTES" \
+              "**Install:** open \`$DMG\` and drag **$APP_NAME** onto **Applications**." \
+              "This build is ad-hoc signed, not notarized. The first time you open it, macOS will block it: go to **System Settings → Privacy & Security** and click **Open Anyway**." \
+              > "$RUNNER_TEMP/notes.md"
+            gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
