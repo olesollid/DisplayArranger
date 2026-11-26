@@ -1,0 +1,13 @@
+# Keeps GitHub Actions up to date. PR does not trigger new release
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]
