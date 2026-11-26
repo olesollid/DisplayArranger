@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "bootstrap-sha": "410d3fbb5963497a1a6a5bdf3e35ec1bfb1d4ae2",
+  "packages": {
+    ".": {
+      "package-name": "DisplayArranger",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}
