@@ -1,32 +1,36 @@
 name: Release
 
 # Reads conventional commits on main and keeps a "chore(main): release x.y.z"
-# pull request open with the next version and a changelog. Merging that PR
-# creates the tag and release, then builds the dmg and attaches it.
+# pull request open with the next version and CHANGELOG.md. Merging that PR
+# creates the tag and GitHub Release, then builds the DMG, attests it and
+# attaches to the release.
 #
 #   fix: ...                     -> patch (0.1.0 -> 0.1.1)
 #   feat: ...                    -> minor (0.1.0 -> 0.2.0)
-#   feat!: ...                   -> major (minor while below 1.0.0)
-
+#   feat!: ... / BREAKING CHANGE -> major (minor while below 1.0.0)
+#
+# Each job gets only the permissions it needs. Actions are pinned to full
+# commit SHAs, dependabot keeps them up to date.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write # For release-please PRs
+permissions: {}
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write      # release commits, tags and releases
+      pull-requests: write # the release PR
+      issues: write        # labels on the release PR
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
         id: release
         with:
           config-file: release-please-config.json
@@ -35,6 +39,51 @@ jobs:
   build:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: read
     uses: ./.github/workflows/build.yml
     with:
       release_tag: ${{ needs.release-please.outputs.tag_name }}
+
+  publish:
+    needs: [release-please, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # upload release assets and edit the notes
+      id-token: write     # sign the build attestation
+      attestations: write # store the build attestation
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: dist
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.dmg
+
+      - name: Attach DMG to release
+        working-directory: dist
+        run: |
+          DMG="$(ls *.dmg)"
+          shasum -a 256 -c "$DMG.sha256"
+          gh release upload "$RELEASE_TAG" "$DMG" "$DMG.sha256" --clobber
+
+          # Add install and verification notes under release-please's changelog.
+          NOTES="$(gh release view "$RELEASE_TAG" --json body --jq .body)"
+          if [[ "$NOTES" != *"Open Anyway"* ]]; then
+            SHA="$(cut -d' ' -f1 "$DMG.sha256")"
+            {
+              printf '%s\n\n---\n\n' "$NOTES"
+              printf '**Install:** open `%s` and drag **DisplayArranger** onto **Applications**.\n\n' "$DMG"
+              printf 'This build is ad-hoc signed, not notarized. The first time you open it, macOS will block it: go to **System Settings → Privacy & Security** and click **Open Anyway**.\n\n'
+              printf '**Verify the download** (optional):\n\n'
+              printf '```bash\nshasum -a 256 %s\n# should print %s\n\ngh attestation verify %s --repo %s\n```\n' "$DMG" "$SHA" "$DMG" "$GH_REPO"
+            } > "$RUNNER_TEMP/notes.md"
+            gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
