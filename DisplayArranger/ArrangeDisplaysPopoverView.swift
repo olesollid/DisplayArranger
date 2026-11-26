@@ -32,6 +32,12 @@ struct ArrangeDisplaysPopoverView: View {
             arrangementCanvas
 
             HStack {
+                Button("Quit") {
+                    controller.quit()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+
                 Toggle(
                     "Run at startup",
                     isOn: Binding(
@@ -45,21 +51,29 @@ struct ArrangeDisplaysPopoverView: View {
 
                 Spacer()
 
-                Button("Quit") {
-                    controller.quit()
+                if hasChanges {
+                    Button("Reset", action: resetLayout)
+                        .buttonStyle(.bordered)
+                        .controlSize(.regular)
+                        .help("Discard changes and return to the applied layout")
+                        .transition(.opacity)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
 
-                Button("Done") {
-                    if displays != initialDisplays {
-                        controller.apply(displays)
+                if hasChanges {
+                    Button("Apply", action: applyLayout)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                        .keyboardShortcut(.defaultAction)
+                        .help("Apply the new arrangement")
+                } else {
+                    Button("Hide") {
+                        controller.closePopover()
                     }
-                    controller.closePopover()
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
             }
+            .animation(.easeOut(duration: 0.15), value: hasChanges)
         }
         .padding(16)
         .frame(width: 560, height: 390)
@@ -81,7 +95,8 @@ struct ArrangeDisplaysPopoverView: View {
 
     private var arrangementCanvas: some View {
         GeometryReader { geometry in
-            let mapping = CanvasMapping(displays: displays, canvasSize: geometry.size)
+            // Fit both layouts so the applied-layout outlines stay visible.
+            let mapping = CanvasMapping(displays: displays + initialDisplays, canvasSize: geometry.size)
             let preview = snapPreview(mapping: mapping)
 
             ZStack {
@@ -91,6 +106,21 @@ struct ArrangeDisplaysPopoverView: View {
                         RoundedRectangle(cornerRadius: 7, style: .continuous)
                             .stroke(Color.white.opacity(0.11), lineWidth: 1)
                     )
+
+                // Dimmed outlines marking where moved displays are in the applied layout.
+                ForEach(movedFromApplied) { applied in
+                    let rect = mapping.canvasRect(for: applied.frame)
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.white.opacity(0.03))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .stroke(Color.gray.opacity(0.55), lineWidth: 1.5)
+                        )
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
 
                 if let preview {
                     let rect = mapping.canvasRect(for: preview)
@@ -149,6 +179,34 @@ struct ArrangeDisplaysPopoverView: View {
         }
         .frame(height: 255)
         .padding(.vertical, 2)
+    }
+
+    /// True when the arrangement on the canvas differs from the applied one.
+    private var hasChanges: Bool {
+        displays != initialDisplays
+    }
+
+    /// Applied-layout entries for displays whose position has changed on the canvas.
+    private var movedFromApplied: [DisplayInfo] {
+        initialDisplays.filter { applied in
+            displays.first(where: { $0.id == applied.id })?.frame != applied.frame
+        }
+    }
+
+    private func applyLayout() {
+        controller.apply(displays)
+        // Re-read what the system actually applied; the screen-change
+        // notification will refresh again once macOS settles.
+        refreshLayout()
+    }
+
+    private func resetLayout() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            displays = initialDisplays
+            parents = DisplayArrangement.parents(for: initialDisplays)
+            draggingID = nil
+            dragOffset = .zero
+        }
     }
 
     /// The dragged display plus everything attached beyond it.
@@ -365,6 +423,7 @@ private struct SnapPad: View {
                     .fill(Color.white.opacity(0.55))
                     .frame(width: size * 0.22, height: size * 0.22)
                     .frame(width: size, height: size)
+                    .allowsHitTesting(false)
                 button(.right)
             }
             button(.below)
@@ -375,10 +434,14 @@ private struct SnapPad: View {
                 .fill(.ultraThinMaterial)
                 .environment(\.colorScheme, .dark)
                 .opacity(0.9)
+                // Click-through: pressing the pad's background (anywhere but a
+                // button) reaches the tile underneath, so the display can be dragged.
+                .allowsHitTesting(false)
         )
         .overlay(
             RoundedRectangle(cornerRadius: size * 0.6, style: .continuous)
                 .stroke(Color.white.opacity(0.14), lineWidth: 0.5)
+                .allowsHitTesting(false)
         )
         .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
     }
