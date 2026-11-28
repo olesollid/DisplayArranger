@@ -386,6 +386,7 @@ private struct DisplayTile: View {
                 .resizable()
                 .scaledToFill()
         } else if NSImage(named: "DisplayBackground") != nil {
+            // SwiftUI picks light/dark variant based on system settings
             Image("DisplayBackground")
                 .resizable()
                 .scaledToFill()
