@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/olesollid/DisplayArranger/compare/v0.2.0...v0.2.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **wallpaper:** Update fallback wallpaper to macOS 27 Golden Gate ([#10](https://github.com/olesollid/DisplayArranger/issues/10)) ([2b0f615](https://github.com/olesollid/DisplayArranger/commit/2b0f61530578ce00766ee3483aa558955a31c939))
+
 ## [0.2.0](https://github.com/olesollid/DisplayArranger/compare/v0.1.0...v0.2.0) (2026-11-26)
 
 
