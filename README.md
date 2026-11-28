@@ -8,6 +8,8 @@
   A small menu bar app for rearranging your displays without opening System Settings.
 </p>
 
+https://github.com/user-attachments/assets/6e1ae963-4d29-4aac-a583-3fd25040e619
+
 ## Features
 
 - **Drag to arrange**: move displays around in a live preview. They snap to the edges of other displays and line up with their centres and edges.
