@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="DisplayArranger/Assets.xcassets/AppIcon.appiconset/icon_256.png" width="128" alt="DisplayArranger icon">
+  <img src="https://github.com/user-attachments/assets/6ca26036-0bfd-4a19-b2e7-9e4096abd596" width="1280" height="640" alt="Preview of DisplayArranger">
 </p>
 
 <h1 align="center">DisplayArranger</h1>
@@ -7,8 +7,6 @@
 <p align="center">
   A small menu bar app for rearranging your displays without opening System Settings.
 </p>
-
-https://github.com/user-attachments/assets/6e1ae963-4d29-4aac-a583-3fd25040e619
 
 ## Features
 
