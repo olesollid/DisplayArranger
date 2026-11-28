@@ -4,9 +4,5 @@
 <dict>
 	<key>LSUIElement</key>
 	<true/>
-	<key>SMAuthorizedClients</key>
-	<array>
-		<string>identifier &quot;com.sollid.DisplayArranger&quot;</string>
-	</array>
 </dict>
 </plist>

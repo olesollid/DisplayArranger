@@ -16,8 +16,4 @@ extension NSScreen {
         }
         return CGDirectDisplayID(uuid.uint32Value)
     }
-
-    var isBuiltIn: Bool {
-        return backingScaleFactor == NSScreen.main?.backingScaleFactor
-    }
 }

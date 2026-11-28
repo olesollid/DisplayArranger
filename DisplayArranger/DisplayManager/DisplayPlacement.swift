@@ -6,7 +6,7 @@
 //
 
 
-enum DisplayPlacement: String, CaseIterable {
+enum DisplayPlacement: CaseIterable {
     case left
     case right
     case above

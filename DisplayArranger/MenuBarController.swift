@@ -77,39 +77,24 @@ class MenuBarController: NSObject, ObservableObject {
     // MARK: - Launch at startup helpers
 
     private func isLaunchAtStartupEnabled() -> Bool {
-        if #available(macOS 13.0, *) {
-            return SMAppService.mainApp.status == .enabled
-        } else {
-            // Fallback for older macOS versions
-            return UserDefaults.standard.bool(forKey: "launchAtStartup")
-        }
+        SMAppService.mainApp.status == .enabled
     }
-    
+
     private func enableLaunchAtStartup() {
-        if #available(macOS 13.0, *) {
-            do {
-                try SMAppService.mainApp.register()
-                log("Launch at startup enabled")
-            } catch {
-                log("Failed to enable launch at startup: \(error)")
-            }
-        } else {
-            // Fallback for older macOS versions
-            UserDefaults.standard.set(true, forKey: "launchAtStartup")
+        do {
+            try SMAppService.mainApp.register()
+            log("Launch at startup enabled")
+        } catch {
+            log("Failed to enable launch at startup: \(error)")
         }
     }
-    
+
     private func disableLaunchAtStartup() {
-        if #available(macOS 13.0, *) {
-            do {
-                try SMAppService.mainApp.unregister()
-                log("Launch at startup disabled")
-            } catch {
-                log("Failed to disable launch: \(error)")
-            }
-        } else {
-            // Fallback for older macOS versions
-            UserDefaults.standard.set(false, forKey: "launchAtStartup")
+        do {
+            try SMAppService.mainApp.unregister()
+            log("Launch at startup disabled")
+        } catch {
+            log("Failed to disable launch at startup: \(error)")
         }
     }
 }
